@@ -41,7 +41,7 @@ func (Addresses) MarkAndSweep(opts Options, set *Set) error {
 
 	for _, addr := range resp.Addresses {
 		a := &address{Account: opts.Account, Region: opts.Region, ID: *addr.AllocationId}
-		if !set.Mark(a, nil) {
+		if !set.Mark(opts, a, nil, fromEC2Tags(addr.Tags)) {
 			continue
 		}
 		logger.Warningf("%s: deleting %T: %s", a.ARN(), addr, a.ID)

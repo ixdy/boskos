@@ -45,11 +45,12 @@ func (NetworkInterfaces) MarkAndSweep(opts Options, set *Set) error {
 				attachTime = eni.Attachment.AttachTime
 			}
 			// AttachTime isn't exactly the creation time, but it's better than nothing.
-			if set.Mark(a, attachTime) {
-				logger.Warningf("%s: deleting %T", a.ARN(), a)
-				if !opts.DryRun {
-					toDelete = append(toDelete, a)
-				}
+			if !set.Mark(opts, a, attachTime, fromEC2Tags(eni.TagSet)) {
+				continue
+			}
+			logger.Warningf("%s: deleting %T", a.ARN(), a)
+			if !opts.DryRun {
+				toDelete = append(toDelete, a)
 			}
 		}
 		return true

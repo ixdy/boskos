@@ -29,7 +29,27 @@ import (
 // Cloud Formation Stacks
 type CloudFormationStacks struct{}
 
-func (CloudFormationStacks) MarkAndSweep(opts Options, set *Set) error {
+func (CloudFormationStacks) fetchTags(svc *cf.CloudFormation, stackID string, logger logrus.FieldLogger) ([]Tag, error) {
+	var tags []Tag
+
+	err := svc.DescribeStacksPages(&cf.DescribeStacksInput{StackName: aws.String(stackID)},
+		func(page *cf.DescribeStacksOutput, _ bool) bool {
+			for _, stack := range page.Stacks {
+				if aws.StringValue(stack.StackId) != stackID {
+					logger.Errorf("unexpected stack id in DescribeStacks output: %s", aws.StringValue(stack.StackId))
+					continue
+				}
+				for _, t := range stack.Tags {
+					tags = append(tags, NewTag(t.Key, t.Value))
+				}
+			}
+			return true
+		})
+
+	return tags, err
+}
+
+func (cfs CloudFormationStacks) MarkAndSweep(opts Options, set *Set) error {
 	logger := logrus.WithField("options", opts)
 	svc := cf.New(opts.Session, aws.NewConfig().WithRegion(opts.Region))
 
@@ -50,11 +70,18 @@ func (CloudFormationStacks) MarkAndSweep(opts Options, set *Set) error {
 				id:      aws.StringValue(stack.StackId),
 				name:    aws.StringValue(stack.StackName),
 			}
-			if set.Mark(o, stack.CreationTime) {
-				logger.Warningf("%s: deleting %T: %s", o.ARN(), o, o.name)
-				if !opts.DryRun {
-					toDelete = append(toDelete, o)
-				}
+			tags, tagErr := cfs.fetchTags(svc, o.id, logger)
+			if tagErr != nil {
+				logger.Warningf("%s: failed to fetch tags: %v", o.ARN(), tagErr)
+				continue
+			}
+			if !set.Mark(opts, o, stack.CreationTime, tags) {
+				continue
+			}
+
+			logger.Warningf("%s: deleting %T: %s", o.ARN(), o, o.name)
+			if !opts.DryRun {
+				toDelete = append(toDelete, o)
 			}
 		}
 		return true
