@@ -18,6 +18,8 @@ package resources
 
 import (
 	"testing"
+
+	"github.com/aws/aws-sdk-go/aws"
 )
 
 func TestMatchesTag(t *testing.T) {
@@ -190,6 +192,43 @@ func TestManagedPerTags(t *testing.T) {
 		managed := opts.ManagedPerTags(tc.Tags)
 		if managed != tc.ShouldManage {
 			t.Errorf("\"%v\": managed: expected=%v, got=%v", tc.Desc, tc.ShouldManage, managed)
+		}
+	}
+}
+
+func TestIncrementalFetchTags(t *testing.T) {
+	tagMap := map[string][]Tag{"a": nil, "b": nil, "c": nil, "d": nil, "e": nil}
+	funcCalls := 0
+	processedIDs := 0
+
+	err := incrementalFetchTags(tagMap, 2, func(ids []*string) error {
+		funcCalls++
+		if len(ids) > 2 {
+			t.Errorf("invalid number of ids in function call: expected<=%d, got=%d", 2, len(ids))
+		}
+		for _, id := range ids {
+			processedIDs++
+			name := aws.StringValue(id)
+			if _, ok := tagMap[name]; !ok {
+				t.Errorf("id not in tag map: %v", id)
+				continue
+			}
+			tagMap[name] = append(tagMap[name], Tag{"seen", "true"})
+		}
+		return nil
+	})
+	if err != nil {
+		t.Errorf("incrementalFetchTags: unexpected error: %v", err)
+	}
+	if funcCalls != 3 {
+		t.Errorf("func called incorrect number of times: expected=%d, got=%d", 3, funcCalls)
+	}
+	if processedIDs != len(tagMap) {
+		t.Errorf("unexpected number of processed ids: expected=%d, got=%d", len(tagMap), processedIDs)
+	}
+	for key, tags := range tagMap {
+		if len(tags) != 1 {
+			t.Errorf("expected 1 tag for key %s, got tags=%v", key, tags)
 		}
 	}
 }

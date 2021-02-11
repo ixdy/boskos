@@ -100,15 +100,16 @@ func fromEC2Tags(ec2tags []*ec2.Tag) []Tag {
 // incrementalFetchTags creates slices of IDs from tagMap no longer than inc at a time, calling
 // f with these slices.
 // This is intended to be used with APIs that allow querying for tags of a limited number of multiple resources at once.
+// If f errors, incrementalFetchTags returns early with the error.
 func incrementalFetchTags(tagMap map[string][]Tag, inc int, f func([]*string) error) error {
-	ids := make([]*string, len(tagMap))
+	ids := make([]*string, 0, len(tagMap))
 	for id := range tagMap {
 		ids = append(ids, aws.String(id))
 	}
 
 	for start := 0; start < len(ids); start += inc {
 		end := start + inc
-		if end < len(ids) {
+		if end > len(ids) {
 			end = len(ids)
 		}
 		err := f(ids[start:end])
